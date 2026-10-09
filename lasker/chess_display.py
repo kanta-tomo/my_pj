@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pygame
 
-from chess_game import BOARD_SIZE, ChessGame, Square
+from chess_game import BOARD_SIZE, ChessGame, Square, is_king_in_check
 
 
 # Window layout
@@ -18,6 +18,7 @@ HISTORY_GAP = 36
 HISTORY_PANEL_WIDTH = 300
 HISTORY_ROW_HEIGHT = 24
 HISTORY_HEADER_HEIGHT = 58
+HISTORY_CONTROLS_HEIGHT = 48
 WINDOW_WIDTH = PADDING * 2 + BOARD_PIXELS + HISTORY_GAP + HISTORY_PANEL_WIDTH
 WINDOW_HEIGHT = PADDING * 2 + BOARD_PIXELS
 
@@ -25,8 +26,8 @@ WINDOW_HEIGHT = PADDING * 2 + BOARD_PIXELS
 LIGHT_SQUARE = (240, 217, 181)
 DARK_SQUARE = (181, 136, 99)
 BOARD_OUTLINE = (80, 80, 80)
-SELECT_RING = (76, 175, 80)
-LEGAL_MOVE_COLOR = (120, 190, 120)
+LEGAL_MOVE_HIGHLIGHT = (255, 255, 180)
+CURRENT_MOVE_HIGHLIGHT = (255, 224, 130)
 MOVE_PANEL = (250, 245, 240)
 TEXT_COLOR = (30, 30, 30)
 BACKGROUND = (245, 245, 245)
@@ -40,11 +41,17 @@ PIECE_ASSET_NAMES = {
     "Q": "queen",
     "K": "king",
 }
-PIECE_SIZE = (60, 76)
+PIECE_SIZE = (50, 64)
+PAWN_SIZE = (38, 48)
+ROOK_SIZE = (42, 54)
+ROYAL_PIECE_SIZE = (58, 74)
 PROMOTION_TYPES = ("Q", "R", "B", "N")
 PROMOTION_PANEL_SIZE = (360, 144)
 PROMOTION_BUTTON_SIZE = (64, 80)
 PROMOTION_BUTTON_GAP = 12
+PROMOTION_PIECE_SIZE = (38, 50)
+PROMOTION_PAWN_SIZE = (28, 36)
+PROMOTION_ROOK_SIZE = (30, 40)
 
 
 @dataclass
@@ -74,7 +81,14 @@ def load_piece_images() -> dict[str, pygame.Surface]:
             piece = f"{color_code}{piece_code}"
             image_path = asset_directory / f"{color_name}-{piece_name}.png"
             image = pygame.image.load(str(image_path)).convert_alpha()
-            images[piece] = pygame.transform.smoothscale(image, PIECE_SIZE)
+            size = {
+                "P": PAWN_SIZE,
+                "R": ROOK_SIZE,
+                "N": ROOK_SIZE,
+                "Q": ROYAL_PIECE_SIZE,
+                "K": ROYAL_PIECE_SIZE,
+            }.get(piece_code, PIECE_SIZE)
+            images[piece] = pygame.transform.smoothscale(image, size)
     return images
 
 
@@ -84,12 +98,38 @@ def history_panel_rect() -> pygame.Rect:
 
 
 def history_visible_rows() -> int:
-    return (BOARD_PIXELS - HISTORY_HEADER_HEIGHT - 16) // HISTORY_ROW_HEIGHT
+    return (
+        BOARD_PIXELS - HISTORY_HEADER_HEIGHT - HISTORY_CONTROLS_HEIGHT - 16
+    ) // HISTORY_ROW_HEIGHT
 
 
 def max_history_scroll(move_count: int) -> int:
     total_rows = (move_count + 1) // 2
     return max(0, total_rows - history_visible_rows())
+
+
+def history_navigation_buttons() -> dict[str, pygame.Rect]:
+    """Return the replay and take-back controls below move history."""
+    panel = history_panel_rect()
+    button_width = 84
+    button_height = 32
+    gap = 6
+    row_width = button_width * 3 + gap * 2
+    left = panel.centerx - row_width // 2
+    top = panel.bottom - button_height - 8
+    return {
+        "back": pygame.Rect(left, top, button_width, button_height),
+        "forward": pygame.Rect(left + button_width + gap, top, button_width, button_height),
+        "take_back": pygame.Rect(left + 2 * (button_width + gap), top, button_width, button_height),
+    }
+
+
+def history_navigation_at(position: tuple[int, int]) -> str | None:
+    """Return which replay control was clicked, if any."""
+    for name, button in history_navigation_buttons().items():
+        if button.collidepoint(position):
+            return name
+    return None
 
 
 def _display_to_board_square(row: int, col: int, flipped: bool) -> Square:
@@ -171,14 +211,24 @@ def _draw_promotion_picker(
     title = fonts.turn.render("Choose a promotion", True, TEXT_COLOR)
     screen.blit(title, title.get_rect(midtop=(panel.centerx, panel.y + 10)))
 
-    _, destination = game.pending_promotion
+    _, destination, _ = game.pending_promotion
     pawn = game.board[destination[0]][destination[1]]
     color = pawn[0]
     for piece_type, button in buttons.items():
         pygame.draw.rect(screen, (255, 255, 255), button, border_radius=4)
         pygame.draw.rect(screen, BOARD_OUTLINE, button, 1, border_radius=4)
         image = piece_images[f"{color}{piece_type}"]
-        screen.blit(image, image.get_rect(center=button.center))
+        size = {
+            "P": PROMOTION_PAWN_SIZE,
+            "R": PROMOTION_ROOK_SIZE,
+        }.get(piece_type, PROMOTION_PIECE_SIZE)
+        image = pygame.transform.smoothscale(image, size)
+        artwork = image.get_bounding_rect()
+        destination = (
+            button.centerx - artwork.centerx,
+            button.centery - artwork.centery,
+        )
+        screen.blit(image, destination)
 
 
 def _draw_history(
@@ -186,6 +236,7 @@ def _draw_history(
     game: ChessGame,
     fonts: Fonts,
     scroll_offset: int,
+    replay_ply: int | None,
 ) -> None:
     panel = history_panel_rect()
     pygame.draw.rect(screen, MOVE_PANEL, panel)
@@ -193,14 +244,26 @@ def _draw_history(
 
     title = fonts.turn.render("Move history", True, TEXT_COLOR)
     screen.blit(title, (panel.x + 12, panel.y + 10))
-    hint = fonts.label.render("F: flip board", True, TEXT_COLOR)
-    screen.blit(hint, (panel.x + 12, panel.y + 36))
-
     total_rows = (len(game.move_history) + 1) // 2
+    latest_position = len(game.position_history) - 1
+    buttons = history_navigation_buttons()
+    for name, button in buttons.items():
+        if name == "back":
+            enabled = latest_position > 0
+        elif name == "take_back":
+            enabled = latest_position > 0
+        else:
+            enabled = replay_ply is not None
+        fill = (255, 255, 255) if enabled else (225, 225, 225)
+        pygame.draw.rect(screen, fill, button, border_radius=4)
+        pygame.draw.rect(screen, BOARD_OUTLINE, button, 1, border_radius=4)
+        label_text = {"back": "Previous", "forward": "Next", "take_back": "Take back"}[name]
+        label = fonts.label.render(label_text, True, TEXT_COLOR)
+        screen.blit(label, label.get_rect(center=button.center))
+
     if total_rows == 0:
         empty_label = fonts.history.render("No moves yet", True, TEXT_COLOR)
         screen.blit(empty_label, (panel.x + 12, panel.y + HISTORY_HEADER_HEIGHT))
-        return
 
     visible_rows = history_visible_rows()
     end_row = max(0, total_rows - scroll_offset)
@@ -209,7 +272,7 @@ def _draw_history(
         panel.x + 8,
         panel.y + HISTORY_HEADER_HEIGHT,
         panel.width - 16,
-        panel.height - HISTORY_HEADER_HEIGHT - 8,
+        panel.height - HISTORY_HEADER_HEIGHT - HISTORY_CONTROLS_HEIGHT - 8,
     )
     old_clip = screen.get_clip()
     screen.set_clip(content_rect)
@@ -218,10 +281,27 @@ def _draw_history(
         white_move = game.move_history[white_index]
         black_index = white_index + 1
         black_move = game.move_history[black_index] if black_index < len(game.move_history) else ""
-        move_text = f"{zero_based_number + 1}. {white_move} {black_move}".rstrip()
-        label = fonts.history.render(move_text, True, TEXT_COLOR)
-        screen.blit(label, (content_rect.x + 4,
-                            content_rect.y + row * HISTORY_ROW_HEIGHT - 2))
+        y = content_rect.y + row * HISTORY_ROW_HEIGHT - 2
+        x = content_rect.x + 4
+        move_number = fonts.history.render(f"{zero_based_number + 1}.", True, TEXT_COLOR)
+        screen.blit(move_number, (x, y))
+        x += move_number.get_width() + 6
+
+        displayed_position = latest_position if replay_ply is None else replay_ply
+        current_move_index = displayed_position - 1
+        white_label = fonts.history.render(white_move, True, TEXT_COLOR)
+        if current_move_index == white_index:
+            highlight = pygame.Rect(x - 3, y - 1, white_label.get_width() + 6, HISTORY_ROW_HEIGHT - 2)
+            pygame.draw.rect(screen, CURRENT_MOVE_HIGHLIGHT, highlight, border_radius=3)
+        screen.blit(white_label, (x, y))
+        x += white_label.get_width() + 10
+
+        if black_move:
+            black_label = fonts.history.render(black_move, True, TEXT_COLOR)
+            if current_move_index == black_index:
+                highlight = pygame.Rect(x - 3, y - 1, black_label.get_width() + 6, HISTORY_ROW_HEIGHT - 2)
+                pygame.draw.rect(screen, CURRENT_MOVE_HIGHLIGHT, highlight, border_radius=3)
+            screen.blit(black_label, (x, y))
     screen.set_clip(old_clip)
 
     if total_rows > visible_rows:
@@ -242,9 +322,15 @@ def draw_board(
     piece_images: dict[str, pygame.Surface],
     flipped: bool = False,
     history_scroll: int = 0,
+    replay_ply: int | None = None,
 ) -> None:
     """Render the board, piece images, turn, and scrollable move history."""
-    legal_targets = set(game.legal_targets)
+    is_replaying = replay_ply is not None
+    replay_position = game.position_history[replay_ply] if is_replaying else None
+    board = replay_position.board if replay_position is not None else game.board
+    legal_targets = set() if is_replaying else set(game.legal_targets)
+    legal_highlight = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+    legal_highlight.fill((*LEGAL_MOVE_HIGHLIGHT, 105))
     for display_row in range(BOARD_SIZE):
         for display_col in range(BOARD_SIZE):
             square = _display_to_board_square(display_row, display_col, flipped)
@@ -254,15 +340,23 @@ def draw_board(
             color = LIGHT_SQUARE if (display_row + display_col) % 2 == 0 else DARK_SQUARE
             pygame.draw.rect(screen, color, rect)
 
-            if square == game.selected_square:
-                pygame.draw.rect(screen, SELECT_RING, rect, 4)
             if square in legal_targets:
-                pygame.draw.circle(screen, LEGAL_MOVE_COLOR, rect.center, 10)
+                screen.blit(legal_highlight, rect.topleft)
 
-            piece = game.board[square[0]][square[1]]
+            piece = board[square[0]][square[1]]
             if piece:
                 image = piece_images[piece]
-                screen.blit(image, image.get_rect(center=rect.center))
+                if piece[1] in {"K", "Q", "B"}:
+                    # Center the visible artwork; some source PNGs have uneven
+                    # transparent margins around the piece.
+                    artwork = image.get_bounding_rect()
+                    destination = (
+                        rect.centerx - artwork.centerx,
+                        rect.centery - artwork.centery,
+                    )
+                    screen.blit(image, destination)
+                else:
+                    screen.blit(image, image.get_rect(center=rect.center))
 
     board_rect = pygame.Rect(PADDING, PADDING, BOARD_PIXELS, BOARD_PIXELS)
     pygame.draw.rect(screen, BOARD_OUTLINE, board_rect, 4)
@@ -276,7 +370,14 @@ def draw_board(
         label = fonts.label.render(number, True, (40, 40, 40))
         screen.blit(label, (PADDING - 18, PADDING + row * SQUARE_SIZE + SQUARE_SIZE // 2 - 8))
 
-    turn_label = fonts.turn.render(game.turn_text, True, TEXT_COLOR)
+    if replay_position is None:
+        turn_text = game.turn_text
+    else:
+        color_name = "White" if replay_position.current_turn == "w" else "Black"
+        status = "in check" if is_king_in_check(board, replay_position.current_turn) else "to move"
+        turn_text = f"{color_name} {status}"
+    turn_label = fonts.turn.render(turn_text, True, TEXT_COLOR)
     screen.blit(turn_label, (PADDING, 8))
-    _draw_history(screen, game, fonts, history_scroll)
-    _draw_promotion_picker(screen, game, fonts, piece_images)
+    _draw_history(screen, game, fonts, history_scroll, replay_ply)
+    if not is_replaying:
+        _draw_promotion_picker(screen, game, fonts, piece_images)

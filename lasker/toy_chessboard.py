@@ -9,6 +9,7 @@ from chess_display import (
     create_fonts,
     draw_board,
     history_panel_rect,
+    history_navigation_at,
     load_piece_images,
     max_history_scroll,
     promotion_choice_at,
@@ -27,6 +28,7 @@ def main() -> None:
         piece_images = load_piece_images()
         flipped = False
         history_scroll = 0
+        replay_ply = None
         running = True
 
         while running:
@@ -35,8 +37,34 @@ def main() -> None:
                     running = False
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_f:
                     flipped = not flipped
+                elif event.type == pygame.KEYDOWN and event.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                    latest_position = len(game.position_history) - 1
+                    current_position = latest_position if replay_ply is None else replay_ply
+                    direction = -1 if event.key == pygame.K_LEFT else 1
+                    next_position = max(0, min(latest_position, current_position + direction))
+                    replay_ply = None if next_position == latest_position else next_position
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if game.pending_promotion is not None:
+                    navigation = history_navigation_at(event.pos)
+                    if navigation is not None:
+                        if navigation == "take_back":
+                            latest_position = len(game.position_history) - 1
+                            if latest_position > 0:
+                                game.take_back_to_position(latest_position - 1)
+                            replay_ply = None
+                            history_scroll = min(
+                                history_scroll,
+                                max_history_scroll(len(game.move_history)),
+                            )
+                        else:
+                            latest_position = len(game.position_history) - 1
+                            current_position = latest_position if replay_ply is None else replay_ply
+                            direction = -1 if navigation == "back" else 1
+                            next_position = max(0, min(latest_position, current_position + direction))
+                            replay_ply = None if next_position == latest_position else next_position
+                    elif replay_ply is not None:
+                        if screen_to_square(event.pos, flipped) is not None:
+                            replay_ply = None
+                    elif game.pending_promotion is not None:
                         choice = promotion_choice_at(event.pos, game)
                         if choice is not None:
                             game.promote(choice)
@@ -53,7 +81,7 @@ def main() -> None:
                         )
 
             screen.fill(BACKGROUND)
-            draw_board(screen, game, fonts, piece_images, flipped, history_scroll)
+            draw_board(screen, game, fonts, piece_images, flipped, history_scroll, replay_ply)
             pygame.display.flip()
     finally:
         pygame.quit()

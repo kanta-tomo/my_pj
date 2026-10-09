@@ -12,6 +12,7 @@ KNIGHT_OFFSETS = (
     (1, 2), (2, 1), (2, -1), (1, -2),
     (-1, -2), (-2, -1), (-2, 1), (-1, 2),
 )
+CASTLING_RIGHTS = ("wK", "wQ", "bK", "bQ")
 DIAGONAL_DIRECTIONS = ((1, 1), (1, -1), (-1, 1), (-1, -1))
 STRAIGHT_DIRECTIONS = ((1, 0), (-1, 0), (0, 1), (0, -1))
 
@@ -24,6 +25,15 @@ PIECE_SYMBOLS = {
 Square = tuple[int, int]
 Board = list[list[Optional[str]]]
 PromotionMove = tuple[Square, Square, str]
+
+
+@dataclass
+class PositionSnapshot:
+    """Board and rule state needed to restore a position in the game."""
+
+    board: Board
+    current_turn: str
+    castling_rights: set[str]
 
 
 def create_initial_board() -> Board:
@@ -77,11 +87,15 @@ def _sliding_moves(board: Board, square: Square, directions: tuple[Square, ...])
     return moves
 
 
-def legal_moves(board: Board, square: Optional[Square]) -> list[Square]:
-    """Return moves allowed by the toy's piece movement rules.
+def _pseudo_legal_moves(
+    board: Board,
+    square: Optional[Square],
+    castling_rights: Optional[set[str]] = None,
+) -> list[Square]:
+    """Return moves allowed by piece movement, before checking king safety.
 
-    Check, castling, and en passant are intentionally not modeled. A pawn
-    reaching the last rank waits for the player to choose its promotion piece.
+    En passant is intentionally not modeled. A pawn reaching the last rank
+    waits for the player to choose its promotion piece.
     """
     if square is None:
         return []
@@ -133,8 +147,41 @@ def legal_moves(board: Board, square: Optional[Square]) -> list[Square]:
             for d_col in (-1, 0, 1):
                 if d_row or d_col:
                     _add_if_available(board, moves, (row + d_row, col + d_col), color)
+
+        home_row = BOARD_SIZE - 1 if color == "w" else 0
+        if square == (home_row, 4) and castling_rights:
+            if (
+                f"{color}K" in castling_rights
+                and board[home_row][7] == f"{color}R"
+                and board[home_row][5] is None
+                and board[home_row][6] is None
+            ):
+                moves.append((home_row, 6))
+            if (
+                f"{color}Q" in castling_rights
+                and board[home_row][0] == f"{color}R"
+                and board[home_row][1] is None
+                and board[home_row][2] is None
+                and board[home_row][3] is None
+            ):
+                moves.append((home_row, 2))
         return moves
     return []
+
+
+def legal_moves(
+    board: Board,
+    square: Optional[Square],
+    castling_rights: Optional[set[str]] = None,
+) -> list[Square]:
+    """Return piece moves that do not leave that side's king in check."""
+    if square is None or not in_bounds(*square):
+        return []
+    return [
+        destination
+        for destination in _pseudo_legal_moves(board, square, castling_rights)
+        if is_valid_move(board, square, destination, castling_rights)
+    ]
 
 
 def move_to_san(board: Board, start: Square, end: Square) -> str:
@@ -145,6 +192,8 @@ def move_to_san(board: Board, start: Square, end: Square) -> str:
         raise ValueError("Cannot format a move from an empty square")
 
     piece_type = piece[1]
+    if piece_type == "K" and abs(end[1] - start_col) == 2:
+        return "O-O" if end[1] == 6 else "O-O-O"
     is_capture = board[end[0]][end[1]] is not None
     destination = board_to_notation(end)
 
@@ -245,11 +294,39 @@ def is_king_in_check(board: Board, color: str) -> bool:
     return False
 
 
-def is_valid_move(board: Board, start: Square, end: Square) -> bool:
+def is_valid_move(
+    board: Board,
+    start: Square,
+    end: Square,
+    castling_rights: Optional[set[str]] = None,
+) -> bool:
     """Return whether a piece can move between two squares under toy rules."""
     if start == end or not in_bounds(*start) or not in_bounds(*end):
         return False
-    return end in legal_moves(board, start)
+    piece = board[start[0]][start[1]]
+    if piece is None or end not in _pseudo_legal_moves(board, start, castling_rights):
+        return False
+
+    is_castling = piece[1] == "K" and abs(end[1] - start[1]) == 2
+    if is_castling:
+        if is_king_in_check(board, piece[0]):
+            return False
+        transit_col = (start[1] + end[1]) // 2
+        transit_board = [rank[:] for rank in board]
+        transit_board[start[0]][transit_col] = piece
+        transit_board[start[0]][start[1]] = None
+        if is_king_in_check(transit_board, piece[0]):
+            return False
+
+    next_board = [rank[:] for rank in board]
+    next_board[end[0]][end[1]] = piece
+    next_board[start[0]][start[1]] = None
+    if is_castling:
+        rook_start_col = 7 if end[1] == 6 else 0
+        rook_end_col = 5 if end[1] == 6 else 3
+        next_board[end[0]][rook_end_col] = next_board[end[0]][rook_start_col]
+        next_board[end[0]][rook_start_col] = None
+    return not is_king_in_check(next_board, piece[0])
 
 
 @dataclass
@@ -261,14 +338,47 @@ class ChessGame:
     selected_square: Optional[Square] = None
     move_history: list[str] = field(default_factory=list)
     pending_promotion: Optional[PromotionMove] = None
+    castling_rights: set[str] = field(default_factory=lambda: set(CASTLING_RIGHTS))
+    position_history: list[PositionSnapshot] = field(default_factory=list, init=False)
+
+    def __post_init__(self) -> None:
+        """Keep a copy of the initial position for board replay."""
+        self._record_position()
+
+    def _record_position(self) -> None:
+        self.position_history.append(
+            PositionSnapshot(
+                board=[rank[:] for rank in self.board],
+                current_turn=self.current_turn,
+                castling_rights=self.castling_rights.copy(),
+            )
+        )
+
+    def take_back_to_position(self, position_index: int) -> bool:
+        """Restore a saved position and discard all moves after it."""
+        if not 0 <= position_index < len(self.position_history):
+            return False
+
+        position = self.position_history[position_index]
+        self.board = [rank[:] for rank in position.board]
+        self.current_turn = position.current_turn
+        self.castling_rights = position.castling_rights.copy()
+        self.move_history = self.move_history[:position_index]
+        self.position_history = self.position_history[:position_index + 1]
+        self.selected_square = None
+        self.pending_promotion = None
+        return True
 
     @property
     def legal_targets(self) -> list[Square]:
-        return legal_moves(self.board, self.selected_square)
+        return legal_moves(self.board, self.selected_square, self.castling_rights)
 
     @property
     def turn_text(self) -> str:
-        return "White to move" if self.current_turn == "w" else "Black to move"
+        color_name = "White" if self.current_turn == "w" else "Black"
+        if is_king_in_check(self.board, self.current_turn):
+            return f"{color_name} in check"
+        return f"{color_name} to move"
 
     def click_square(self, square: Optional[Square]) -> None:
         """Select a friendly piece or make a legal move to the clicked square."""
@@ -287,14 +397,30 @@ class ChessGame:
         if clicked_piece and clicked_piece[0] == self.current_turn:
             self.selected_square = square
             return
-        if not is_valid_move(self.board, self.selected_square, square):
+        if not is_valid_move(self.board, self.selected_square, square, self.castling_rights):
             return
 
         start = self.selected_square
         piece = self.board[start[0]][start[1]]
         san = move_to_san(self.board, start, square)
+        captured_piece = self.board[row][col]
+
+        if piece[1] == "K":
+            self.castling_rights.discard(f"{piece[0]}K")
+            self.castling_rights.discard(f"{piece[0]}Q")
+        elif piece[1] == "R":
+            self._remove_rook_castling_right(piece[0], start)
+        if captured_piece is not None and captured_piece[1] == "R":
+            self._remove_rook_castling_right(captured_piece[0], square)
+
         self.board[row][col] = piece
         self.board[start[0]][start[1]] = None
+        is_castling = piece[1] == "K" and abs(square[1] - start[1]) == 2
+        if is_castling:
+            rook_start_col = 7 if square[1] == 6 else 0
+            rook_end_col = 5 if square[1] == 6 else 3
+            self.board[row][rook_end_col] = self.board[row][rook_start_col]
+            self.board[row][rook_start_col] = None
         reaches_last_rank = (
             piece == "wP" and row == 0
         ) or (
@@ -310,6 +436,14 @@ class ChessGame:
         self.move_history.append(f"{san}{check_suffix}")
         self.selected_square = None
         self.current_turn = "b" if self.current_turn == "w" else "w"
+        self._record_position()
+
+    def _remove_rook_castling_right(self, color: str, square: Square) -> None:
+        home_row = BOARD_SIZE - 1 if color == "w" else 0
+        if square == (home_row, 0):
+            self.castling_rights.discard(f"{color}Q")
+        elif square == (home_row, BOARD_SIZE - 1):
+            self.castling_rights.discard(f"{color}K")
 
     def promote(self, piece_type: str) -> bool:
         """Complete a pending pawn promotion to queen, rook, bishop, or knight."""
@@ -328,4 +462,5 @@ class ChessGame:
         self.move_history.append(f"{san}={piece_type}{check_suffix}")
         self.pending_promotion = None
         self.current_turn = "b" if self.current_turn == "w" else "w"
+        self._record_position()
         return True

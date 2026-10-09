@@ -20,8 +20,13 @@ python3 toy_chessboard.py
 
 Click one of the current player's pieces to select it, then click a highlighted
 destination to move it. Click the selected piece again to cancel the selection.
-Press `F` to flip the board to the other player's perspective. Scroll over the
-move history panel to browse earlier moves. Close the window to quit.
+Press `F` to flip the board to the other player's perspective. Use the
+`Previous` and `Next` buttons, or the left and right arrow keys, to replay
+positions without changing the current game. Click `Take back` to undo the
+latest completed move and restore the position before it, even while replaying
+an earlier position. Clicking the board returns to the current position.
+Scroll over the move history panel to browse earlier moves. Close the window to
+quit.
 
 ## Project layout
 
@@ -39,12 +44,14 @@ input to the game and display.
 ## Scope and conventions
 
 - This toy handles basic piece movement and captures, and prevents capturing a
-  king. It does not prevent moves that leave a king in check or implement
-  checkmate, castling, or en passant. When a pawn reaches the last rank, choose
-  a queen, rook, bishop, or knight from the promotion picker.
+  king. It enforces check by rejecting moves that leave the moving player's
+  king under attack. It supports castling when the usual rights and path
+  conditions remain, but does not detect checkmate or implement en passant.
+  When a pawn reaches the last rank, choose a queen, rook, bishop, or knight
+  from the promotion picker.
 - Move history uses algebraic notation: for example, `e4`, `Nf3`, `Bxe6`, and
-  `e8=Q`. It adds `+` when a move attacks the opposing king; it does not add
-  `#` for checkmate.
+  `e8=Q`, `O-O`, and `O-O-O`. It adds `+` when a move attacks the opposing
+  king; it does not add `#` for checkmate.
 - Use `(row, column)` tuples for board coordinates. Row `0` is rank 8, and
   column `0` is file `a`.
 - Piece codes use a lowercase color followed by an uppercase piece letter:
@@ -57,7 +64,7 @@ input to the game and display.
 
 ## Piece artwork
 
-The Staunton piece images are by James Clarke, from
-[Staunton-Pieces](https://github.com/clarkerubber/Staunton-Pieces), and are
-provided under the MIT License. The license text is included at
-`assets/pieces/LICENSE`.
+The 2D Chessnut piece artwork is by Alexis Luengas, from
+[chessnut-pieces](https://github.com/LexLuengas/chessnut-pieces). The SVGs are
+bundled as transparent PNGs for Pygame. The artwork is provided under the
+Apache License 2.0; its license and copyright notice are in `assets/pieces/`.
