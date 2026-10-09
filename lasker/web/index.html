@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Toy Chessboard</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">LASKER · TOY CHESSBOARD</p>
+          <h1>Toy Chessboard</h1>
+        </div>
+        <button id="flip-button" class="quiet-button" type="button">Flip board</button>
+      </header>
+
+      <section class="game-layout" aria-label="Chess game">
+        <div class="board-column">
+          <p id="game-status" class="game-status" aria-live="polite">White to move</p>
+          <div id="board" class="board" role="grid" aria-label="Chessboard"></div>
+        </div>
+
+        <aside class="history-panel">
+          <div class="history-heading">
+            <h2>Move history</h2>
+            <span id="history-count" class="history-count">0 moves</span>
+          </div>
+          <div id="move-list" class="move-list" aria-label="Move history"></div>
+          <div class="history-controls">
+            <button id="previous-button" type="button">Previous</button>
+            <button id="next-button" type="button">Next</button>
+            <button id="takeback-button" class="takeback-button" type="button">Take back</button>
+          </div>
+          <p class="help-text">Use the arrow keys to replay. Press F to flip the board.</p>
+        </aside>
+      </section>
+    </main>
+
+    <dialog id="promotion-dialog" class="promotion-dialog">
+      <h2>Choose a promotion</h2>
+      <div id="promotion-options" class="promotion-options"></div>
+    </dialog>
+  </body>
+</html>

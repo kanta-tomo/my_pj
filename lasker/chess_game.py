@@ -359,6 +359,10 @@ class ChessGame:
         if not 0 <= position_index < len(self.position_history):
             return False
 
+        self._restore_position(position_index)
+        return True
+
+    def _restore_position(self, position_index: int) -> None:
         position = self.position_history[position_index]
         self.board = [rank[:] for rank in position.board]
         self.current_turn = position.current_turn
@@ -367,7 +371,6 @@ class ChessGame:
         self.position_history = self.position_history[:position_index + 1]
         self.selected_square = None
         self.pending_promotion = None
-        return True
 
     @property
     def legal_targets(self) -> list[Square]:

@@ -18,15 +18,27 @@ From this directory, start the game with:
 python3 toy_chessboard.py
 ```
 
+## Browser version
+
+The game also has a browser interface. From this directory, start a local web
+server:
+
+```sh
+python3 -m http.server 8000
+```
+
+Then open [http://localhost:8000/web/](http://localhost:8000/web/) in your
+browser. Stop the server with `Ctrl+C` in the terminal.
+
 Click one of the current player's pieces to select it, then click a highlighted
 destination to move it. Click the selected piece again to cancel the selection.
 Press `F` to flip the board to the other player's perspective. Use the
 `Previous` and `Next` buttons, or the left and right arrow keys, to replay
-positions without changing the current game. Click `Take back` to undo the
-latest completed move and restore the position before it, even while replaying
-an earlier position. Clicking the board returns to the current position.
-Scroll over the move history panel to browse earlier moves. Close the window to
-quit.
+positions without changing the current game. `Take back` undoes the latest
+completed move and restores the position before it, even while replaying an
+earlier position. Clicking the board during replay returns to the current
+position. Scroll over the move history panel to browse earlier moves. Close the
+window to quit.
 
 ## Project layout
 
@@ -34,12 +46,16 @@ quit.
 - `chess_game.py` owns the board, turns, move history, and piece movement rules.
 - `chess_display.py` draws the board and translates mouse coordinates into
   board squares.
-- `assets/pieces/` contains the bundled piece images and their license.
+- `web/` contains a static browser version. Its `app.js` implements the same
+  toy rules for play without Pygame.
+- `assets/pieces-basic-png/` contains the piece images used by both interfaces.
+- `assets/pieces/` contains the previous piece set and its license.
 
 The game logic module does not depend on Pygame. Keep new rules and game state
 in `chess_game.py`; keep screen layout, colors, fonts, and drawing in
 `chess_display.py`. Keep `toy_chessboard.py` focused on startup and connecting
 input to the game and display.
+When changing game rules, keep `web/app.js` in sync with `chess_game.py`.
 
 ## Scope and conventions
 
@@ -64,7 +80,11 @@ input to the game and display.
 
 ## Piece artwork
 
-The 2D Chessnut piece artwork is by Alexis Luengas, from
-[chessnut-pieces](https://github.com/LexLuengas/chessnut-pieces). The SVGs are
-bundled as transparent PNGs for Pygame. The artwork is provided under the
-Apache License 2.0; its license and copyright notice are in `assets/pieces/`.
+The active images are transparent 128×128 PNGs in `assets/pieces-basic-png/`.
+They come from [Green Chess's downloads page](https://greenchess.net/info.php?item=downloads),
+which says the standard chess pieces are based on Wikipedia images, slightly
+modified, and requires attribution and share-alike under
+[CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/). The attribution
+notice is also included in `assets/pieces-basic-png/COPYRIGHT.txt`. The previous
+2D Chessnut set by Alexis Luengas remains in `assets/pieces/`, with its Apache
+License 2.0 and copyright notice.

@@ -41,17 +41,17 @@ PIECE_ASSET_NAMES = {
     "Q": "queen",
     "K": "king",
 }
-PIECE_SIZE = (50, 64)
-PAWN_SIZE = (38, 48)
-ROOK_SIZE = (42, 54)
-ROYAL_PIECE_SIZE = (58, 74)
+PIECE_SIZE = (68, 68)
+PAWN_SIZE = (64, 64)
+ROOK_SIZE = (64, 64)
+ROYAL_PIECE_SIZE = (70, 70)
 PROMOTION_TYPES = ("Q", "R", "B", "N")
 PROMOTION_PANEL_SIZE = (360, 144)
 PROMOTION_BUTTON_SIZE = (64, 80)
 PROMOTION_BUTTON_GAP = 12
-PROMOTION_PIECE_SIZE = (38, 50)
-PROMOTION_PAWN_SIZE = (28, 36)
-PROMOTION_ROOK_SIZE = (30, 40)
+PROMOTION_PIECE_SIZE = (44, 44)
+PROMOTION_PAWN_SIZE = (32, 32)
+PROMOTION_ROOK_SIZE = (36, 36)
 
 
 @dataclass
@@ -74,7 +74,7 @@ def create_fonts() -> Fonts:
 
 def load_piece_images() -> dict[str, pygame.Surface]:
     """Load and scale the bundled piece images once at startup."""
-    asset_directory = Path(__file__).parent / "assets" / "pieces"
+    asset_directory = Path(__file__).parent / "assets" / "pieces-basic-png"
     images = {}
     for color_code, color_name in (("w", "white"), ("b", "black")):
         for piece_code, piece_name in PIECE_ASSET_NAMES.items():
@@ -111,9 +111,9 @@ def max_history_scroll(move_count: int) -> int:
 def history_navigation_buttons() -> dict[str, pygame.Rect]:
     """Return the replay and take-back controls below move history."""
     panel = history_panel_rect()
-    button_width = 84
+    button_width = 88
     button_height = 32
-    gap = 6
+    gap = 8
     row_width = button_width * 3 + gap * 2
     left = panel.centerx - row_width // 2
     top = panel.bottom - button_height - 8
@@ -252,7 +252,7 @@ def _draw_history(
             enabled = latest_position > 0
         elif name == "take_back":
             enabled = latest_position > 0
-        else:
+        elif name == "forward":
             enabled = replay_ply is not None
         fill = (255, 255, 255) if enabled else (225, 225, 225)
         pygame.draw.rect(screen, fill, button, border_radius=4)

@@ -1,0 +1,12 @@
+Chess piece image attribution
+
+These standard chess piece images were downloaded from Green Chess:
+https://greenchess.net/info.php?item=downloads
+
+Green Chess states that its standard chess pieces are from Wikipedia, slightly
+modified, and may be copied, redistributed, or modified with attribution and
+share-alike. The Green Chess page links to the Creative Commons Attribution-
+ShareAlike 3.0 Unported License:
+https://creativecommons.org/licenses/by-sa/3.0/
+
+The PNG files are used as downloaded. The game scales them for display.
