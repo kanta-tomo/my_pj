@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Toy Chessboard</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="app.js" defer></script>
+    <link rel="stylesheet" href="style.css?v=11">
+    <script src="app.js?v=11" defer></script>
   </head>
   <body>
     <main class="app">
@@ -19,8 +19,10 @@
 
       <section class="game-layout" aria-label="Chess game">
         <div class="board-column">
-          <p id="game-status" class="game-status" aria-live="polite">White to move</p>
-          <div id="board" class="board" role="grid" aria-label="Chessboard"></div>
+          <div class="board-wrap">
+            <div id="turn-indicator" class="turn-indicator" role="img" aria-label="White to move"></div>
+            <div id="board" class="board" role="grid" aria-label="Chessboard"></div>
+          </div>
         </div>
 
         <aside class="history-panel">

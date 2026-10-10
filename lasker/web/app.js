@@ -5,8 +5,9 @@ const FILES = "abcdefgh";
 const ASSET_NAMES = { P: "pawn", R: "rook", N: "knight", B: "bishop", Q: "queen", K: "king" };
 const PROMOTION_TYPES = ["Q", "R", "B", "N"];
 const boardElement = document.querySelector("#board");
-const statusElement = document.querySelector("#game-status");
+const turnIndicator = document.querySelector("#turn-indicator");
 const historyElement = document.querySelector("#move-list");
+const historyPanelElement = document.querySelector(".history-panel");
 const countElement = document.querySelector("#history-count");
 const promotionDialog = document.querySelector("#promotion-dialog");
 const promotionOptions = document.querySelector("#promotion-options");
@@ -26,6 +27,7 @@ const game = {
   board: initialBoard(),
   turn: "w",
   selected: null,
+  lastMove: null,
   moveHistory: [],
   positions: [],
   castlingRights: new Set(["wK", "wQ", "bK", "bQ"]),
@@ -40,6 +42,7 @@ function savePosition() {
   game.positions.push({
     board: copyBoard(game.board),
     turn: game.turn,
+    lastMove: game.lastMove ? { from: game.lastMove.from.slice(), to: game.lastMove.to.slice() } : null,
     castlingRights: new Set(game.castlingRights),
   });
 }
@@ -48,6 +51,9 @@ function restorePosition(positionIndex) {
   const position = game.positions[positionIndex];
   game.board = copyBoard(position.board);
   game.turn = position.turn;
+  game.lastMove = position.lastMove
+    ? { from: position.lastMove.from.slice(), to: position.lastMove.to.slice() }
+    : null;
   game.castlingRights = new Set(position.castlingRights);
   game.moveHistory = game.moveHistory.slice(0, positionIndex);
   game.positions = game.positions.slice(0, positionIndex + 1);
@@ -262,6 +268,7 @@ function movePiece(start, end) {
   const piece = game.board[start[0]][start[1]];
   const captured = game.board[end[0]][end[1]];
   const san = sanForMove(start, end);
+  game.lastMove = { from: start.slice(), to: end.slice() };
   if (piece[1] === "K") {
     game.castlingRights.delete(`${piece[0]}K`);
     game.castlingRights.delete(`${piece[0]}Q`);
@@ -293,9 +300,9 @@ function showPromotion() {
     button.type = "button";
     button.setAttribute("aria-label", `Promote to ${ASSET_NAMES[type]}`);
     const image = document.createElement("img");
+    image.classList.add(ASSET_NAMES[type]);
     image.src = piecePath(`${color}${type}`);
     image.alt = "";
-    if (type === "R") image.classList.add("rook");
     button.append(image);
     button.addEventListener("click", () => {
       const { end, san } = game.pendingPromotion;
@@ -340,7 +347,7 @@ function currentPosition() {
 function renderBoard() {
   const replay = currentPosition();
   const board = replay ? replay.board : game.board;
-  const targets = replay || !game.selected ? [] : legalMoves(game.board, game.selected);
+  const lastMove = replay ? replay.lastMove : game.lastMove;
   boardElement.replaceChildren();
   for (let displayRow = 0; displayRow < SIZE; displayRow += 1) {
     for (let displayCol = 0; displayCol < SIZE; displayCol += 1) {
@@ -352,20 +359,10 @@ function renderBoard() {
       cell.className = `square ${(displayRow + displayCol) % 2 === 0 ? "light" : "dark"}`;
       cell.setAttribute("role", "gridcell");
       cell.setAttribute("aria-label", `${squareName(square)}${board[row][col] ? ` ${board[row][col]}` : " empty"}`);
+      if (lastMove && (sameSquare(square, lastMove.from) || sameSquare(square, lastMove.to))) {
+        cell.classList.add("last-move");
+      }
       if (sameSquare(square, game.selected) && !replay) cell.classList.add("selected");
-      if (targets.some((target) => sameSquare(target, square))) cell.classList.add("legal");
-      if (displayCol === 0) {
-        const rank = document.createElement("span");
-        rank.className = "axis-label rank-label";
-        rank.textContent = String(8 - row);
-        cell.append(rank);
-      }
-      if (displayRow === 7) {
-        const file = document.createElement("span");
-        file.className = "axis-label file-label";
-        file.textContent = FILES[col];
-        cell.append(file);
-      }
       const piece = board[row][col];
       if (piece) {
         const img = document.createElement("img");
@@ -411,21 +408,35 @@ function renderHistory() {
   }
   countElement.textContent = `${game.moveHistory.length} ${game.moveHistory.length === 1 ? "move" : "moves"}`;
   const activeMove = historyElement.querySelector(".move.current");
-  if (activeMove) activeMove.scrollIntoView({ block: "nearest" });
+  if (activeMove) {
+    const moveRect = activeMove.getBoundingClientRect();
+    const listRect = historyElement.getBoundingClientRect();
+    if (moveRect.top < listRect.top) {
+      historyElement.scrollTop -= listRect.top - moveRect.top;
+    } else if (moveRect.bottom > listRect.bottom) {
+      historyElement.scrollTop += moveRect.bottom - listRect.bottom;
+    }
+  }
 }
 
 function render() {
   const replay = currentPosition();
-  const board = replay ? replay.board : game.board;
   const turn = replay ? replay.turn : game.turn;
   const colorName = turn === "w" ? "White" : "Black";
-  statusElement.textContent = `${colorName}${inCheck(board, turn) ? " in check" : " to move"}`;
+  turnIndicator.classList.toggle("black-to-move", turn === "b");
+  turnIndicator.classList.toggle("at-top", (turn === "b") !== game.flipped);
+  turnIndicator.setAttribute("aria-label", `${colorName} to move`);
   renderBoard();
+  syncHistoryPanelHeight();
   renderHistory();
   const latest = game.positions.length - 1;
   document.querySelector("#previous-button").disabled = latest === 0;
   document.querySelector("#next-button").disabled = game.replayIndex === null;
   document.querySelector("#takeback-button").disabled = latest === 0;
+}
+
+function syncHistoryPanelHeight() {
+  historyPanelElement.style.height = `${boardElement.getBoundingClientRect().height}px`;
 }
 
 function moveReplay(direction) {
@@ -446,7 +457,7 @@ function takeBackLatest() {
 
 document.querySelector("#flip-button").addEventListener("click", () => {
   game.flipped = !game.flipped;
-  renderBoard();
+  render();
 });
 document.querySelector("#previous-button").addEventListener("click", () => moveReplay(-1));
 document.querySelector("#next-button").addEventListener("click", () => moveReplay(1));
@@ -457,8 +468,13 @@ document.addEventListener("keydown", (event) => {
   else if (event.key === "ArrowRight") moveReplay(1);
   else if (event.key.toLowerCase() === "f") {
     game.flipped = !game.flipped;
-    renderBoard();
+    render();
   }
 });
 
+if ("ResizeObserver" in window) {
+  new ResizeObserver(syncHistoryPanelHeight).observe(boardElement);
+} else {
+  window.addEventListener("resize", syncHistoryPanelHeight);
+}
 render();

@@ -31,8 +31,6 @@ CURRENT_MOVE_HIGHLIGHT = (255, 224, 130)
 MOVE_PANEL = (250, 245, 240)
 TEXT_COLOR = (30, 30, 30)
 BACKGROUND = (245, 245, 245)
-FILES = "abcdefgh"
-RANKS = "87654321"
 PIECE_ASSET_NAMES = {
     "P": "pawn",
     "R": "rook",
@@ -324,7 +322,7 @@ def draw_board(
     history_scroll: int = 0,
     replay_ply: int | None = None,
 ) -> None:
-    """Render the board, piece images, turn, and scrollable move history."""
+    """Render the board, piece images, and scrollable move history."""
     is_replaying = replay_ply is not None
     replay_position = game.position_history[replay_ply] if is_replaying else None
     board = replay_position.board if replay_position is not None else game.board
@@ -360,24 +358,6 @@ def draw_board(
 
     board_rect = pygame.Rect(PADDING, PADDING, BOARD_PIXELS, BOARD_PIXELS)
     pygame.draw.rect(screen, BOARD_OUTLINE, board_rect, 4)
-    file_labels = FILES[::-1] if flipped else FILES
-    rank_labels = RANKS[::-1] if flipped else RANKS
-    for col, letter in enumerate(file_labels):
-        label = fonts.label.render(letter, True, (40, 40, 40))
-        screen.blit(label, (PADDING + col * SQUARE_SIZE + SQUARE_SIZE // 2 - 5,
-                            PADDING + BOARD_PIXELS + 8))
-    for row, number in enumerate(rank_labels):
-        label = fonts.label.render(number, True, (40, 40, 40))
-        screen.blit(label, (PADDING - 18, PADDING + row * SQUARE_SIZE + SQUARE_SIZE // 2 - 8))
-
-    if replay_position is None:
-        turn_text = game.turn_text
-    else:
-        color_name = "White" if replay_position.current_turn == "w" else "Black"
-        status = "in check" if is_king_in_check(board, replay_position.current_turn) else "to move"
-        turn_text = f"{color_name} {status}"
-    turn_label = fonts.turn.render(turn_text, True, TEXT_COLOR)
-    screen.blit(turn_label, (PADDING, 8))
     _draw_history(screen, game, fonts, history_scroll, replay_ply)
     if not is_replaying:
         _draw_promotion_picker(screen, game, fonts, piece_images)

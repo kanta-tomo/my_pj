@@ -20,15 +20,15 @@ python3 toy_chessboard.py
 
 ## Browser version
 
-The game also has a browser interface. From this directory, start a local web
-server:
+The game also has a browser interface. From this directory, run:
 
 ```sh
-python3 -m http.server 8000
+python3 open_chessboard.py
 ```
 
-Then open [http://localhost:8000/web/](http://localhost:8000/web/) in your
-browser. Stop the server with `Ctrl+C` in the terminal.
+This starts a local server and opens the page in your default browser. Keep the
+terminal open while playing; press `Ctrl+C` there to stop the server. If port
+8000 is already in use, the launcher chooses another available port.
 
 Click one of the current player's pieces to select it, then click a highlighted
 destination to move it. Click the selected piece again to cancel the selection.
@@ -43,6 +43,7 @@ window to quit.
 ## Project layout
 
 - `toy_chessboard.py` starts Pygame and runs the event loop.
+- `open_chessboard.py` starts the local browser version and opens it.
 - `chess_game.py` owns the board, turns, move history, and piece movement rules.
 - `chess_display.py` draws the board and translates mouse coordinates into
   board squares.
